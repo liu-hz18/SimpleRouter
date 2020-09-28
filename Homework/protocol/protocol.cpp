@@ -1,6 +1,52 @@
 #include "rip.h"
 #include <stdint.h>
 #include <stdlib.h>
+#include <arpa/inet.h>
+
+bool is_mask(uint64_t mask) {
+    for(size_t i = 0; i < 32; i++) {
+        if ( mask == (((uint64_t)1) << i) - 1 ) { 
+            return true;
+        }
+    }
+    return false;
+}
+
+uint64_t to_int64_net(const uint8_t *buffer, size_t bytes) {
+    uint64_t number = 0;
+    for(size_t i = 0; i < bytes; i++) {
+        number = (number << 8) + buffer[i];
+    }
+    return number;
+}
+
+uint64_t to_int64_host(const uint8_t* buffer, size_t bytes) {
+    return ntohl(to_int64_net(buffer, bytes));
+}
+
+bool command_match(uint32_t rip_command, uint64_t packet_command) {
+    if ((rip_command == 2 && packet_command == 2) || (rip_command == 1 && packet_command == 0)){
+        return true;
+    }
+    return false;
+}
+
+bool valid_metric(uint64_t metric) {
+    return metric >= 1 && metric <= 16;
+}
+
+bool valid_entry(uint32_t command, const uint8_t* packet) {
+    if ( (!command_match(command, to_int64_net(packet, 2))) ||  //family
+          packet[2] != 0 || //tag
+          packet[3] != 0 || //tag
+          (!is_mask(to_int64_host(packet+8, 4))) ||  //mask
+          (!valid_metric(to_int64_net(packet+16, 4)))      //metric
+    ){
+        return false;
+    }
+    return true;
+}
+
 
 /*
   在头文件 rip.h 中定义了如下的结构体：
@@ -48,7 +94,36 @@
  */
 bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
   // TODO:
-  return false;
+    int iphlen = (packet[0] & 0xf) << 2;
+    int iplen = to_int64_net(packet+4, 2);
+    int index = iphlen; //udp = index + iphlen
+    if(iplen > len) {
+        return false;
+    }
+    index += 8;
+    if( (packet[index] != 1 && packet[index] != 2) || //command
+         packet[index+1] != 2 ||  //version
+         packet[index+2] != 0 ||  //zero
+         packet[index+3] != 0     //zero
+    ) {
+        return false;
+    }
+    output->command = packet[index];
+    output->numEntries = 0;
+    index += 4;
+    while (index < len) {
+        if(!valid_entry(output->command, packet+index)){
+            return false;
+        }
+        RipEntry entry;  //little endian
+        entry.addr = to_int64_host(packet+index+4, 4);
+        entry.mask = to_int64_host(packet+index+8, 4);
+        entry.nexthop = to_int64_host(packet+index+12, 4);
+        entry.metric = to_int64_host(packet+index+16, 4);
+        output->entries[output->numEntries++] = entry;
+        index += 20;
+    }
+    return true;
 }
 
 /**
@@ -64,5 +139,23 @@ bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
  */
 uint32_t assemble(const RipPacket *rip, uint8_t *buffer) {
   // TODO:
-  return 0;
+  uint8_t command = rip->command;
+  uint8_t command_value = (command == 2) ? 2 : 0;
+  buffer[0] = command; //command
+  buffer[1] = 2;       //version
+  buffer[2] = buffer[3] = 0;       //zero
+  size_t current_index = 4;
+  uint8_t* entry = buffer + 4;
+  size_t total_size = rip->numEntries;
+  for(size_t i = 0; i < total_size; i++) {
+      entry[0] = entry[2] = entry[3] = 0;
+      entry[1] = command_value;
+      ((uint32_t*)entry)[1] = rip->entries[i].addr;  //little endian
+      ((uint32_t*)entry)[2] = rip->entries[i].mask;
+      ((uint32_t*)entry)[3] = rip->entries[i].nexthop;
+      ((uint32_t*)entry)[4] = rip->entries[i].metric;
+      current_index += 20;
+      entry += 20;
+  }
+  return current_index;
 }

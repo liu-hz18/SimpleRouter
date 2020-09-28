@@ -2,6 +2,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define MAX_TABLE_SIZE 1024
+
+RoutingTableEntry RoutingTable[MAX_TABLE_SIZE];
+size_t current_size = 0;
+
 /*
   RoutingTable Entry 的定义如下：
   typedef struct {
@@ -18,6 +23,36 @@
   你可以在全局变量中把路由表以一定的数据结构格式保存下来。
 */
 
+void _insert(RoutingTableEntry& entry) {
+    bool exist = false;
+    uint32_t addr = entry.addr;
+    uint32_t len = entry.len;
+    uint32_t if_index = entry.if_index;
+    uint32_t nexthop = entry.nexthop;
+    for(size_t i = 0; i < current_size; i++) {
+        if (addr == RoutingTable[i].addr && len == RoutingTable[i].len) {
+            RoutingTable[i].nexthop = nexthop;
+            RoutingTable[i].if_index = if_index;
+            exist = true;
+            break;
+        }
+    }
+    if (!exist) RoutingTable[current_size++] = entry;
+}
+
+void _delete(RoutingTableEntry& entry) {
+    uint32_t addr = entry.addr;
+    uint32_t len = entry.len;
+    for(size_t i = 0; i < current_size; i++) {
+        if (addr == RoutingTable[i].addr && len == RoutingTable[i].len) {
+            current_size--;
+            RoutingTable[i] = RoutingTable[current_size];
+            break;
+        }
+    }
+}
+
+
 /**
  * @brief 插入/删除一条路由表表项
  * @param insert 如果要插入则为 true ，要删除则为 false
@@ -28,6 +63,7 @@
  */
 void update(bool insert, RoutingTableEntry entry) {
   // TODO:
+  insert ? _insert(entry) : _delete(entry);
 }
 
 /**
@@ -41,5 +77,19 @@ bool prefix_query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index) {
   // TODO:
   *nexthop = 0;
   *if_index = 0;
-  return false;
+  int index = -1;
+  int max_len = 0;
+  for(size_t i = 0; i < current_size; i++) {
+      uint32_t mask = ((uint64_t)1<<RoutingTable[i].len) - 1;
+      if ((addr & mask) == RoutingTable[i].addr && RoutingTable[i].len > max_len) {
+          max_len = RoutingTable[i].len;
+          index = i;
+      }
+  }
+  if (index < 0) {
+      return false;
+  }
+  *nexthop = RoutingTable[index].nexthop;
+  *if_index = RoutingTable[index].if_index;
+  return true;
 }

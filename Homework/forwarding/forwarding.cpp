@@ -16,5 +16,10 @@ extern bool validateIPChecksum(uint8_t *packet, size_t len);
  */
 bool forward(uint8_t *packet, size_t len) {
   // TODO:
-  return false;
+  if(!validateIPChecksum(packet, len)){
+      return false;
+  }
+  packet[8] -= 1;
+  validateIPChecksum(packet, len);
+  return true;
 }

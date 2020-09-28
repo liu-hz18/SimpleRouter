@@ -33,8 +33,11 @@ static const char *interfaces[N_IFACE_ON_BOARD] = {
 // configure this to match the output of `ip a`
 static const char *interfaces[N_IFACE_ON_BOARD] = {
     "eth1",
-    "eth2",
-    "eth3",
-    "eth4",
+    //"eth2",
+    //"eth3",
+    //"eth4",
+    "lo",
+    "enp8s0",
+    "wlp7s0",
 };
 #endif
