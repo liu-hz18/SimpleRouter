@@ -1,6 +1,7 @@
 #include "rip.h"
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <arpa/inet.h>
 
 bool is_mask(uint64_t mask) {
@@ -9,10 +10,11 @@ bool is_mask(uint64_t mask) {
             return true;
         }
     }
+    printf("mask = %llu \n", mask);
     return false;
 }
 
-uint64_t to_int64_net(const uint8_t *buffer, size_t bytes) {
+uint64_t to_int64_net(const uint8_t *buffer, size_t bytes) { // BIG ENDIAN
     uint64_t number = 0;
     for(size_t i = 0; i < bytes; i++) {
         number = (number << 8) + buffer[i];
@@ -20,7 +22,7 @@ uint64_t to_int64_net(const uint8_t *buffer, size_t bytes) {
     return number;
 }
 
-uint64_t to_int64_host(const uint8_t* buffer, size_t bytes) {
+uint64_t to_int64_host(const uint8_t* buffer, size_t bytes) { // SMALL ENDIAN
     return ntohl(to_int64_net(buffer, bytes));
 }
 
@@ -28,6 +30,7 @@ bool command_match(uint32_t rip_command, uint64_t packet_command) {
     if ((rip_command == 2 && packet_command == 2) || (rip_command == 1 && packet_command == 0)){
         return true;
     }
+    printf("rip_command = %d, packet_command = %d", rip_command, packet_command);
     return false;
 }
 
@@ -42,6 +45,9 @@ bool valid_entry(uint32_t command, const uint8_t* packet) {
           (!is_mask(to_int64_host(packet+8, 4))) ||  //mask
           (!valid_metric(to_int64_net(packet+16, 4)))      //metric
     ){
+        printf("!!!invalid entry!!!, command: %d, %d | tag: %d, %d | mask: %d, %d, %d, %d | metric: %d, %d, %d, %d\n",
+               packet[0], packet[1], packet[2], packet[3], packet[8], packet[9], packet[10], packet[11],
+               packet[16], packet[17], packet[18], packet[19]);
         return false;
     }
     return true;
@@ -51,11 +57,11 @@ bool valid_entry(uint32_t command, const uint8_t* packet) {
 /*
   在头文件 rip.h 中定义了如下的结构体：
   #define RIP_MAX_ENTRY 25
+  
   typedef struct {
-    // all fields are big endian
-    // we don't store 'family', as it is always 2(for response) and 0(for
-  request)
-    // we don't store 'tag', as it is always 0
+     !!! all fields are big endian
+     !!! we don't store 'family', as it is always 2(for response) and 0(for request)
+     !!! we don't store 'tag', as it is always 0
     uint32_t addr;
     uint32_t mask;
     uint32_t nexthop;
@@ -64,10 +70,10 @@ bool valid_entry(uint32_t command, const uint8_t* packet) {
 
   typedef struct {
     uint32_t numEntries;
-    // all fields below are big endian
-    uint8_t command; // 1 for request, 2 for response, otherwsie invalid
-    // we don't store 'version', as it is always 2
-    // we don't store 'zero', as it is always 0
+    !!! all fields below are big endian
+    uint8_t command; // 1 for request, 2 for response, otherwise invalid
+    !!! we don't store 'version', as it is always 2
+    !!! we don't store 'zero', as it is always 0
     RipEntry entries[RIP_MAX_ENTRY];
   } RipPacket;
 

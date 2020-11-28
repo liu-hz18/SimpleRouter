@@ -1,8 +1,9 @@
 #include "router.h"
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdio.h>
 
-#define MAX_TABLE_SIZE 1024
+#define MAX_TABLE_SIZE 3000
 
 RoutingTableEntry RoutingTable[MAX_TABLE_SIZE];
 size_t current_size = 0;
@@ -87,6 +88,7 @@ bool prefix_query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index) {
       }
   }
   if (index < 0) {
+      printf("!!!Not Found in Routing Table!!!");
       return false;
   }
   *nexthop = RoutingTable[index].nexthop;
