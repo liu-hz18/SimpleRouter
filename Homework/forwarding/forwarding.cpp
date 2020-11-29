@@ -16,10 +16,33 @@ extern bool validateIPChecksum(uint8_t *packet, size_t len);
  */
 bool forward(uint8_t *packet, size_t len) {
   // TODO:
+  // check checksum
   if(!validateIPChecksum(packet, len)){
       return false;
   }
+  // TTL - 1
+  uint16_t m = ((uint16_t)packet[8] << 8) + packet[9];
   packet[8] -= 1;
-  validateIPChecksum(packet, len);
+  uint16_t m_new = ((uint16_t)packet[8] << 8) + packet[9];
+  // update checksum, incremental updating!!!!
+  // validateIPChecksum(packet, len);
+  /*
+   ref: https://tools.ietf.org/html/rfc1624
+    HC  - old checksum in header
+    C   - one's complement sum of old header
+    HC' - new checksum in header
+    C'  - one's complement sum of new header
+    m   - old value of a 16-bit field
+    m'  - new value of a 16-bit field
+
+    C' = C + m' - m
+    HC' = ~(~HC + ~m + m')
+  */
+  uint16_t hc = ((uint16_t)packet[10] << 8) + packet[11];
+  //uint16_t hc_new = ~(~hc + ~m + m_new);
+  uint16_t hc_new = hc + m + (~m_new + 1); // one's complement
+  if (hc_new == 0xffff) hc_new ++; // solve corner case
+  packet[10] = (hc_new >> 8);
+  packet[11] = (hc_new & 0xff);
   return true;
 }
