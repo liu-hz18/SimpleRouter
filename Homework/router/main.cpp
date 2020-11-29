@@ -214,6 +214,12 @@ void print_routing_table() {
     }
 }
 
+void broadcast_table() {
+    for (int i = 0; i < N_IFACE_ON_BOARD; i++) {
+        send_message(i, false, RIP_MULTICAST_ADDR, multicast_mac);
+    }
+}
+
 
 int main(int argc, char *argv[]) {
   // 0a.
@@ -241,8 +247,9 @@ int main(int argc, char *argv[]) {
   print_routing_table();
   uint64_t last_time = 0;
 
-  //send_message(0, true, RIP_MULTICAST_ADDR, multicast_mac);
-  //send_message(1, true, RIP_MULTICAST_ADDR, multicast_mac);
+  // 程序启动时向所有 interface 发送 RIP Request，目标地址为 RIP 的组播地址。
+  send_message(0, true, RIP_MULTICAST_ADDR, multicast_mac);
+  send_message(1, true, RIP_MULTICAST_ADDR, multicast_mac);
 
   while (1) {
     printf("***************************************");
@@ -255,13 +262,14 @@ int main(int argc, char *argv[]) {
       printf("5s Timer\n");
       // HINT: print complete routing table to stdout/stderr for debugging
       // TODO: send complete routing table to every interface
-      for (int i = 0; i < N_IFACE_ON_BOARD; i++) {
-        // construct rip response
-        // do the mostly same thing as step 3a.3
-        // except that dst_ip is RIP multicast IP 224.0.0.9
-        // and dst_mac is RIP multicast MAC 01:00:5e:00:00:09
-        send_message(i, false, RIP_MULTICAST_ADDR, multicast_mac);
-      }
+    //   for (int i = 0; i < N_IFACE_ON_BOARD; i++) {
+    //     // construct rip response
+    //     // do the mostly same thing as step 3a.3
+    //     // except that dst_ip is RIP multicast IP 224.0.0.9
+    //     // and dst_mac is RIP multicast MAC 01:00:5e:00:00:09
+    //     send_message(i, false, RIP_MULTICAST_ADDR, multicast_mac);
+    //   }
+      broadcast_table();
       //print_routing_table();
       last_time = time;
     }
@@ -383,18 +391,23 @@ int main(int argc, char *argv[]) {
                         RoutingTable[i].nexthop = entry.nexthop;
                         RoutingTable[i].if_index = entry.if_index;
                         RoutingTable[i].metric = entry.metric;
+                        broadcast_table();
                     } else if (entry.metric < RoutingTable[i].metric) {
                         printf("Next Hop is not Src Addr, and metric is smaller than in-table entry\n");
                         print_routing_table();
                         RoutingTable[i].nexthop = entry.nexthop;
                         RoutingTable[i].if_index = entry.if_index;
                         RoutingTable[i].metric = entry.metric;
+                        broadcast_table();
                     }
                     exist = true;
                     break;
                 }
               }
-              if (!exist) RoutingTable[current_size++] = entry;
+              if (!exist) {
+                  RoutingTable[current_size++] = entry;
+                  broadcast_table();
+              }
            }
         }
       } else {
