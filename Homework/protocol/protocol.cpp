@@ -100,10 +100,12 @@ bool valid_entry(uint32_t command, const uint8_t* packet) {
  */
 bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
   // TODO:
-    int iphlen = (packet[0] & 0xf) << 2;
-    int iplen = to_int64_net(packet+4, 2);
+    uint32_t iphlen = (packet[0] & 0xf) << 2;
+    uint64_t ip_len = to_int64_net(packet+2, 2);
     int index = iphlen; //udp = index + iphlen
-    if(iplen > len) {
+    if(ip_len > len) {
+        printf("total len: %x, %x\n", packet[2], packet[3]);
+        printf("!!!invalid, ip total len=%u > len=%u\n", ip_len, len);
         return false;
     }
     index += 8;
@@ -112,6 +114,7 @@ bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
          packet[index+2] != 0 ||  //zero
          packet[index+3] != 0     //zero
     ) {
+        printf("!!!invalid, index: %d\n");
         return false;
     }
     output->command = packet[index];

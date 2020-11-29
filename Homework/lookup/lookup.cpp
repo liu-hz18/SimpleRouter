@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <arpa/inet.h>
 
 #define MAX_TABLE_SIZE 3000
 
@@ -24,12 +25,14 @@ size_t current_size = 0;
   你可以在全局变量中把路由表以一定的数据结构格式保存下来。
 */
 
-void _insert(RoutingTableEntry& entry) {
+void _insert(RoutingTableEntry entry) {
+    //printf("insert one, addr=%s, nexthop=%s, len=%d, if_index=%d, addr=%u\n", inet_ntoa(in_addr{entry.addr}), inet_ntoa(in_addr{entry.nexthop}), entry.len, entry.if_index, entry.addr);
     bool exist = false;
     uint32_t addr = entry.addr;
     uint32_t len = entry.len;
     uint32_t if_index = entry.if_index;
     uint32_t nexthop = entry.nexthop;
+    entry.addr = entry.addr & 0xFFFFFFFF;
     for(size_t i = 0; i < current_size; i++) {
         if (addr == RoutingTable[i].addr && len == RoutingTable[i].len) {
             RoutingTable[i].nexthop = nexthop;
@@ -39,11 +42,13 @@ void _insert(RoutingTableEntry& entry) {
         }
     }
     if (!exist) RoutingTable[current_size++] = entry;
+    //print_routing_table();
 }
 
-void _delete(RoutingTableEntry& entry) {
+void _delete(RoutingTableEntry entry) {
     uint32_t addr = entry.addr;
     uint32_t len = entry.len;
+    //printf("delete one, addr=%s, nexthop=%s\n", inet_ntoa(in_addr{entry.addr}), inet_ntoa(in_addr{entry.nexthop}));
     for(size_t i = 0; i < current_size; i++) {
         if (addr == RoutingTable[i].addr && len == RoutingTable[i].len) {
             current_size--;
@@ -51,8 +56,12 @@ void _delete(RoutingTableEntry& entry) {
             break;
         }
     }
+    //print_routing_table();
 }
 
+void print_ip_big_endian(uint32_t ip_addr) {
+    printf("%u.%u.%u.%u", (ip_addr & 0xff000000) >> 24, (ip_addr & 0x00ff0000) >> 16, (ip_addr & 0xff00) >> 8, (ip_addr & 0xff));
+}
 
 /**
  * @brief 插入/删除一条路由表表项
@@ -76,19 +85,26 @@ void update(bool insert, RoutingTableEntry entry) {
  */
 bool prefix_query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index) {
   // TODO:
+  //printf("prefix query");
+  //print_ip_big_endian(addr);
   *nexthop = 0;
   *if_index = 0;
   int index = -1;
   int max_len = 0;
+  //print_routing_table();
   for(size_t i = 0; i < current_size; i++) {
       uint32_t mask = ((uint64_t)1<<RoutingTable[i].len) - 1;
+      //printf("addr= %s | entry: mask=%d, addr=%s, len=%d, if_index=%d | addr&mask=%s\n", inet_ntoa(in_addr{htonl(addr)}), mask, inet_ntoa(in_addr{htonl(RoutingTable[i].addr)}), RoutingTable[i].len, RoutingTable[i].if_index, inet_ntoa(in_addr{htonl(addr & mask)}));
+      //printf("%u, %u, %s, %s\n", addr&mask, RoutingTable[i].addr, inet_ntoa(in_addr{htonl(addr&mask)}), inet_ntoa(in_addr{htonl(RoutingTable[i].addr)}));
+      //print_ip_big_endian(RoutingTable[i].addr);
       if ((addr & mask) == RoutingTable[i].addr && RoutingTable[i].len > max_len) {
+          //printf("Found one\n");
           max_len = RoutingTable[i].len;
           index = i;
       }
   }
   if (index < 0) {
-      printf("!!!Not Found in Routing Table!!!");
+      //printf("!!!Not Found in Routing Table!!!");
       return false;
   }
   *nexthop = RoutingTable[index].nexthop;

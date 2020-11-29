@@ -114,13 +114,13 @@ void send_message(int interface, bool is_request, uint32_t dst_addr, macaddr_t m
     RipPacket** rip_packets = rip_router_table(is_request, interface, &packet_num);
     for (size_t i = 0; i < packet_num; i++) {
         printf("packet num: %d\n", i);
-        int num = assemble(rip_packets[i], output+28); //UDP包中套RIP包
+        int rip_len = assemble(rip_packets[i], output+28); //UDP包中套RIP包
         output[0] = 0x45; // version = 4, IHL = 5
         output[1] = 0x00; // type of service = 0
-        int length = num + 28; // total length
-        output[2] = (length & 0xff00) >> 8;
-        output[3] = length & 0xff;
-        output[4] = output[5] = output[6] = output[7] = 0x0;
+        int ip_len = rip_len + 28; // total length
+        output[2] = (ip_len & 0xff00) >> 8;
+        output[3] = ip_len & 0xff;
+        output[4] = output[5] = output[6] = output[7] = 0x0; // flags
         output[8] = 0x01; // ttl = 1
         output[9] = 0x11; // protocol: udp = 17
         output[10] = output[11] = 0x00; // set checksum to zero for future calculation
@@ -148,17 +148,17 @@ void send_message(int interface, bool is_request, uint32_t dst_addr, macaddr_t m
         output[10] = (checksum & 0xff00) >> 8;
         output[11] = checksum & 0xff;
         // UDP
-        output[20] = 0x02;
+        output[20] = 0x02; // src port
         output[21] = 0x08;
-        output[22] = 0x02;
+        output[22] = 0x02; // dst port
         output[23] = 0x08;
-        int udp_len = num + 8;
-        printf("udp length: %d", udp_len);
+        int udp_len = rip_len + 8;
+        printf("udp length: %d\n", udp_len);
         output[24] = (udp_len & 0xff00) >> 8;
         output[25] = udp_len & 0xff;
         output[26] = output[27] = 0x00; //UDP校验和可空，置零，可以不计算
         // send
-        HAL_SendIPPacket(interface, output, length, mac_addr);
+        HAL_SendIPPacket(interface, output, ip_len, mac_addr);
     }
 }
 
@@ -242,10 +242,11 @@ int main(int argc, char *argv[]) {
   print_routing_table();
   uint64_t last_time = 0;
 
-  send_message(0, true, RIP_MULTICAST_ADDR, multicast_mac);
-  send_message(1, true, RIP_MULTICAST_ADDR, multicast_mac);
+  //send_message(0, true, RIP_MULTICAST_ADDR, multicast_mac);
+  //send_message(1, true, RIP_MULTICAST_ADDR, multicast_mac);
 
   while (1) {
+    printf("***************************************");
     uint64_t time = HAL_GetTicks();
     // the RFC says 30s interval,
     // but for faster convergence, use 5s here
@@ -284,17 +285,17 @@ int main(int argc, char *argv[]) {
       // packet is truncated, ignore it
       continue;
     }
-    printf("res: %d \n", res);
+    printf("receive a packet, res: %d \n", res);
     // 1. validate
     if (!validateIPChecksum(packet, res)) {
-      printf("Invalid IP Checksum\n");
+      printf("!!!receive packet Invalid IP Checksum!!!\n");
       // drop if ip checksum invalid
       continue;
     }
     in_addr_t src_addr, dst_addr;
     // TODO: extract src_addr and dst_addr from packet (big endian)
-    src_addr = (packet[15] << 24) + (packet[14] << 16) + (packet[13] << 8) + packet[12];
-    dst_addr = (packet[19] << 24) + (packet[18] << 16) + (packet[17] << 8) + packet[16];
+    src_addr = (packet[15] << 24) + (packet[14] << 16) + (packet[13] << 8) + packet[12]; // big
+    dst_addr = (packet[19] << 24) + (packet[18] << 16) + (packet[17] << 8) + packet[16]; // big
     printf("packet addr info from %d: ", if_index);
     printf("src addr = %d.%d.%d.%d ", src_addr & 0xff, (src_addr & 0xff00) >> 8, (src_addr & 0xff0000) >> 16, (src_addr & 0xff000000) >> 24);
     printf("dst addr = %d.%d.%d.%d \n", dst_addr & 0xff, (dst_addr & 0xff00) >> 8, (dst_addr & 0xff0000) >> 16, (dst_addr & 0xff000000) >> 24);
@@ -369,16 +370,23 @@ int main(int argc, char *argv[]) {
                   .nexthop = htonl(src_addr),
                   .metric = ((uint32_t)entry_metric) << 24 // big endian
               };
+            //   if (rip.entries[i].nexthop == 0) {
+            //       entry.metric = 0x10000000;
+            //   }
               // update Routing Table
               bool exist = false;
               // linear finding, O(n)!!!
               for(size_t i = 0; i < current_size; i++) {
                 if (entry.addr == RoutingTable[i].addr && entry.len == RoutingTable[i].len) {
-                    if (RoutingTable[i].nexthop == src_addr) { // sender address == prev nexthop in Routing Table
+                    if (RoutingTable[i].nexthop == entry.nexthop) { // sender address == prev nexthop in Routing Table
+                        printf("Next Hop is Src Addr, force update\n");
+                        print_routing_table();
                         RoutingTable[i].nexthop = entry.nexthop;
                         RoutingTable[i].if_index = entry.if_index;
                         RoutingTable[i].metric = entry.metric;
                     } else if (entry.metric < RoutingTable[i].metric) {
+                        printf("Next Hop is not Src Addr, and metric is smaller than in-table entry\n");
+                        print_routing_table();
                         RoutingTable[i].nexthop = entry.nexthop;
                         RoutingTable[i].if_index = entry.if_index;
                         RoutingTable[i].metric = entry.metric;
