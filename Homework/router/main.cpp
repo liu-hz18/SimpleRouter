@@ -57,107 +57,113 @@ in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0100000a, 0x0101000a, 0x0102000a,
 
 macaddr_t multicast_mac = {0x01, 0x00, 0x5e, 0x00, 0x00, 0x09};
 
-RipPacket** rip_router_table(bool is_request, int interface, int *packet_num, uint32_t dst_addr) {
-    printf("rip_router_table(): construct rip_packets, is_request=%d\n", is_request);
-    RipPacket** rip_packets = new RipPacket*[210];
-    //printf("function rip_router_table\n");
-    *packet_num = 0;
-    //printf("after construct rip_packets\n");
-    if (is_request) {
-        printf("is request\n");
-        *packet_num = 1;
-        rip_packets[0] = new RipPacket();
-        rip_packets[0]->numEntries = 1;
-        rip_packets[0]->command = 0x01;
-        RipEntry entry = {
-            .addr = 0x00000000,
-            .mask = 0x00000000,
-            .nexthop = 0x00000000,
-            .metric = 0x10000000
-        };
-        rip_packets[0]->entries[0] = entry;
-    } else {
-        printf("not request, Size = %d\n", current_size);
-        for (size_t i = 0; i < current_size; i++) {
-            if (i % 25 == 0) {
-                rip_packets[*packet_num] = new RipPacket();
-                rip_packets[*packet_num]->numEntries = (current_size - i >= 25) ? 25 : current_size - i;
-                rip_packets[*packet_num]->command = 0x02;
-                *packet_num = *packet_num + 1;
-            }
-            //printf("before construct entry %d\n", i);
-            RipEntry entry = {
-                .addr = RoutingTable[i].addr,
-                .mask = 0,
-                .nexthop = RoutingTable[i].nexthop,
-                .metric = (dst_addr == RoutingTable[i].nexthop) ? 0x10000000 : RoutingTable[i].metric // posion reverse
-            };
-            //printf("after construct entry %d\n", i);
-            uint32_t mask = 0;
-            for (size_t j = 0; j < RoutingTable[i].len; j++) {
-                mask = (mask << 1) + 1;
-            }
-            for (size_t j = RoutingTable[i].len; j < 32; j++) {
-                mask = (mask << 1);
-            }
-            entry.mask = htonl(mask);
-            rip_packets[*packet_num-1]->entries[i % 25] = entry;   
+RipPacket* build_rip_request() {
+    RipPacket* rip_packets = new RipPacket();
+    printf("build rip request\n");
+    rip_packets = new RipPacket();
+    rip_packets->numEntries = 1;
+    rip_packets->command = 0x01;
+    RipEntry entry = {
+        .addr = 0x00000000,
+        .mask = 0x00000000,
+        .nexthop = 0x00000000,
+        .metric = 0x10000000
+    };
+    rip_packets->entries[0] = entry;
+    return rip_packets;
+}
+
+RipPacket** build_rip_response(int* num_packets, uint32_t dst_addr_be) {
+    RipPacket** rip_packets = new RipPacket*[100];
+    *num_packets = 0;
+    for (size_t i = 0; i < current_size; i++) {
+        if (i % 25 == 0) {
+            rip_packets[*num_packets] = new RipPacket();
+            rip_packets[*num_packets]->numEntries = (current_size - i >= 25) ? 25 : current_size - i;
+            rip_packets[*num_packets]->command = 0x02;
+            *num_packets = *num_packets + 1;
         }
+        //printf("before construct entry %d\n", i);
+        RipEntry entry = {
+            .addr = RoutingTable[i].addr,
+            .mask = 0,
+            .nexthop = RoutingTable[i].nexthop,
+            .metric = (dst_addr_be == RoutingTable[i].nexthop) ? 0x10000000 : RoutingTable[i].metric // posion reverse
+        };
+        uint32_t mask = ~((((uint64_t)1) << (32 - RoutingTable[i].len)) - 1);
+        entry.mask = htonl(mask);
+        rip_packets[*num_packets-1]->entries[i % 25] = entry;   
     }
     return rip_packets;
 }
 
-void send_message(int interface, bool is_request, uint32_t dst_addr, macaddr_t mac_addr) {
-    int packet_num = 0;
-    printf("send message, if_index=%d, dst_addr=%d.%d.%d.%d \n", interface, dst_addr & 0xff, (dst_addr & 0xff00) >> 8, (dst_addr & 0xff0000) >> 16, (dst_addr & 0xff000000) >> 24);
-    RipPacket** rip_packets = rip_router_table(is_request, interface, &packet_num, htonl(dst_addr));
-    for (size_t i = 0; i < packet_num; i++) {
+int init_rip_header_len(int rip_len) { // addr little endian
+    int ip_len = rip_len + 28; // total length
+    output[2] = (ip_len & 0xff00) >> 8;
+    output[3] = ip_len & 0xff;
+    // ip checksum
+    uint16_t checksum = 0;
+    uint32_t sum = 0;
+    for (size_t i = 0; i < 20; i += 2) { 
+        sum += (((uint16_t)output[i]) << 8) + output[i+1];
+    }
+    sum = (sum >> 16) + (sum & 0xffff);
+    sum += (sum >> 16);
+    checksum = (uint16_t)(~sum);
+    output[10] = (checksum & 0xff00) >> 8;
+    output[11] = checksum & 0xff;
+    int udp_len = rip_len + 8;
+    output[24] = (udp_len & 0xff00) >> 8;
+    output[25] = udp_len & 0xff;
+    return ip_len;
+}
+
+void init_rip_header(uint32_t src_addr_le, uint32_t dst_addr_le) {
+    output[0] = 0x45; // version = 4, IHL = 5
+    output[1] = 0x00; // type of service = 0
+    output[4] = output[5] = output[6] = output[7] = 0x0; // flags
+    output[8] = 0x01; // ttl = 1
+    output[9] = 0x11; // protocol: udp = 17
+    output[10] = output[11] = 0x00; // set checksum to zero for future calculation
+    // src addr
+    output[12] =  src_addr_le & 0xff;
+    output[13] = (src_addr_le & 0xff00) >> 8;
+    output[14] = (src_addr_le & 0xff0000) >> 16;
+    output[15] = (src_addr_le & 0xff000000) >> 24;
+    // dst addr
+    output[16] =  dst_addr_le & 0xff;
+    output[17] = (dst_addr_le & 0xff00) >> 8;
+    output[18] = (dst_addr_le & 0xff0000) >> 16;
+    output[19] = (dst_addr_le & 0xff000000) >> 24;
+    // UDP
+    output[20] = 0x02; // src port
+    output[21] = 0x08;
+    output[22] = 0x02; // dst port
+    output[23] = 0x08;
+    // udp checksum
+    output[26] = output[27] = 0x00; //UDP校验和可空，置零，可以不计算
+}
+
+void send_rip_request(int if_index, uint32_t dst_addr_le, macaddr_t mac_addr) {
+    int packet_num = 1;
+    printf("send message, if_index=%d, dst_addr=%d.%d.%d.%d \n", if_index, dst_addr_le & 0xff, (dst_addr_le & 0xff00) >> 8, (dst_addr_le & 0xff0000) >> 16, (dst_addr_le & 0xff000000) >> 24);
+    RipPacket* rip_packets = build_rip_request();
+    init_rip_header(addrs[if_index], dst_addr_le);
+    int rip_len = assemble(rip_packets, output+28);
+    int ip_len = init_rip_header_len(rip_len);
+    HAL_SendIPPacket(if_index, output, ip_len, mac_addr);
+}
+
+void send_rip_response(int if_index, uint32_t dst_addr_le, macaddr_t mac_addr) {
+    printf("send message, if_index=%d, dst_addr=%d.%d.%d.%d \n", if_index, dst_addr_le & 0xff, (dst_addr_le & 0xff00) >> 8, (dst_addr_le & 0xff0000) >> 16, (dst_addr_le & 0xff000000) >> 24);
+    int num_packets = 0;
+    RipPacket** rip_packets = build_rip_response(&num_packets, htonl(dst_addr_le));
+    init_rip_header(addrs[if_index], dst_addr_le);
+    for (size_t i = 0; i < num_packets; i++) {
         printf("packet num: %d\n", i);
         int rip_len = assemble(rip_packets[i], output+28); //UDP包中套RIP包
-        output[0] = 0x45; // version = 4, IHL = 5
-        output[1] = 0x00; // type of service = 0
-        int ip_len = rip_len + 28; // total length
-        output[2] = (ip_len & 0xff00) >> 8;
-        output[3] = ip_len & 0xff;
-        output[4] = output[5] = output[6] = output[7] = 0x0; // flags
-        output[8] = 0x01; // ttl = 1
-        output[9] = 0x11; // protocol: udp = 17
-        output[10] = output[11] = 0x00; // set checksum to zero for future calculation
-        // src addr
-        uint32_t src_addr_net = htonl(addrs[interface]);
-        output[12] = (src_addr_net & 0xff000000) >> 24;
-        output[13] = (src_addr_net & 0x00ff0000) >> 16;
-        output[14] = (src_addr_net & 0x0000ff00) >> 8;
-        output[15] = (src_addr_net & 0x000000ff);
-        // dst addr
-        uint32_t dst_addr_net = htonl(dst_addr);
-        output[16] = (dst_addr_net & 0xff000000) >> 24;
-        output[17] = (dst_addr_net & 0x00ff0000) >> 16;
-        output[18] = (dst_addr_net & 0x0000ff00) >> 8;
-        output[19] = (dst_addr_net & 0x000000ff);
-        // checksum
-        uint16_t checksum = 0;
-        uint32_t sum = 0;
-        for (size_t i = 0; i < 20; i += 2) { 
-            sum += (((uint16_t)output[i]) << 8) + output[i+1];
-        }
-        sum = (sum >> 16) + (sum & 0xffff);
-        sum += (sum >> 16);
-        checksum = (uint16_t)(~sum);
-        output[10] = (checksum & 0xff00) >> 8;
-        output[11] = checksum & 0xff;
-        // UDP
-        output[20] = 0x02; // src port
-        output[21] = 0x08;
-        output[22] = 0x02; // dst port
-        output[23] = 0x08;
-        int udp_len = rip_len + 8;
-        printf("udp length: %d\n", udp_len);
-        output[24] = (udp_len & 0xff00) >> 8;
-        output[25] = udp_len & 0xff;
-        output[26] = output[27] = 0x00; //UDP校验和可空，置零，可以不计算
-        // send
-        HAL_SendIPPacket(interface, output, ip_len, mac_addr);
+        int ip_len = init_rip_header_len(rip_len);
+        HAL_SendIPPacket(if_index, output, ip_len, mac_addr);
     }
 }
 
@@ -216,10 +222,9 @@ void print_routing_table() {
 
 void broadcast_table() {
     for (int i = 0; i < N_IFACE_ON_BOARD; i++) {
-        send_message(i, false, RIP_MULTICAST_ADDR, multicast_mac);
+        send_rip_response(i, RIP_MULTICAST_ADDR, multicast_mac);
     }
 }
-
 
 int main(int argc, char *argv[]) {
   // 0a.
@@ -248,11 +253,11 @@ int main(int argc, char *argv[]) {
   uint64_t last_time = 0;
 
   // 程序启动时向所有 interface 发送 RIP Request，目标地址为 RIP 的组播地址。
-  send_message(0, true, RIP_MULTICAST_ADDR, multicast_mac);
-  send_message(1, true, RIP_MULTICAST_ADDR, multicast_mac);
+    send_rip_request(0, RIP_MULTICAST_ADDR, multicast_mac);
+    send_rip_request(1, RIP_MULTICAST_ADDR, multicast_mac);
 
   while (1) {
-    printf("***************************************");
+    printf("***************************************\n");
     uint64_t time = HAL_GetTicks();
     // the RFC says 30s interval,
     // but for faster convergence, use 5s here
@@ -262,13 +267,6 @@ int main(int argc, char *argv[]) {
       printf("5s Timer\n");
       // HINT: print complete routing table to stdout/stderr for debugging
       // TODO: send complete routing table to every interface
-    //   for (int i = 0; i < N_IFACE_ON_BOARD; i++) {
-    //     // construct rip response
-    //     // do the mostly same thing as step 3a.3
-    //     // except that dst_ip is RIP multicast IP 224.0.0.9
-    //     // and dst_mac is RIP multicast MAC 01:00:5e:00:00:09
-    //     send_message(i, false, RIP_MULTICAST_ADDR, multicast_mac);
-    //   }
     // do the mostly same thing as step 3a.3
     // except that dst_ip is RIP multicast IP 224.0.0.9
     // and dst_mac is RIP multicast MAC 01:00:5e:00:00:09
@@ -352,7 +350,7 @@ int main(int argc, char *argv[]) {
 
           // send it back
           // HAL_SendIPPacket(if_index, output, rip_len + 20 + 8, src_mac);
-          send_message(if_index, false, src_addr, src_mac);
+          send_rip_response(if_index, src_addr, src_mac);
         } else {
           // 3a.2 response, ref. RFC2453 Section 3.9.2
           // TODO: update routing table
