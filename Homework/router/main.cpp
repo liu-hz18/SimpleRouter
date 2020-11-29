@@ -57,7 +57,7 @@ in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0100000a, 0x0101000a, 0x0102000a,
 
 macaddr_t multicast_mac = {0x01, 0x00, 0x5e, 0x00, 0x00, 0x09};
 
-RipPacket** rip_router_table(bool is_request, int interface, int *packet_num) {
+RipPacket** rip_router_table(bool is_request, int interface, int *packet_num, uint32_t dst_addr) {
     printf("rip_router_table(): construct rip_packets, is_request=%d\n", is_request);
     RipPacket** rip_packets = new RipPacket*[210];
     //printf("function rip_router_table\n");
@@ -90,7 +90,7 @@ RipPacket** rip_router_table(bool is_request, int interface, int *packet_num) {
                 .addr = RoutingTable[i].addr,
                 .mask = 0,
                 .nexthop = RoutingTable[i].nexthop,
-                .metric = (interface == RoutingTable[i].if_index) ? 0x10000000 : RoutingTable[i].metric
+                .metric = (dst_addr == RoutingTable[i].nexthop) ? 0x10000000 : RoutingTable[i].metric // posion reverse
             };
             //printf("after construct entry %d\n", i);
             uint32_t mask = 0;
@@ -101,7 +101,6 @@ RipPacket** rip_router_table(bool is_request, int interface, int *packet_num) {
                 mask = (mask << 1);
             }
             entry.mask = htonl(mask);
-            printf("entry %d mask: %d \n", i, entry.mask);
             rip_packets[*packet_num-1]->entries[i % 25] = entry;   
         }
     }
@@ -111,7 +110,7 @@ RipPacket** rip_router_table(bool is_request, int interface, int *packet_num) {
 void send_message(int interface, bool is_request, uint32_t dst_addr, macaddr_t mac_addr) {
     int packet_num = 0;
     printf("send message, if_index=%d, dst_addr=%d.%d.%d.%d \n", interface, dst_addr & 0xff, (dst_addr & 0xff00) >> 8, (dst_addr & 0xff0000) >> 16, (dst_addr & 0xff000000) >> 24);
-    RipPacket** rip_packets = rip_router_table(is_request, interface, &packet_num);
+    RipPacket** rip_packets = rip_router_table(is_request, interface, &packet_num, htonl(dst_addr));
     for (size_t i = 0; i < packet_num; i++) {
         printf("packet num: %d\n", i);
         int rip_len = assemble(rip_packets[i], output+28); //UDP包中套RIP包
@@ -397,7 +396,6 @@ int main(int argc, char *argv[]) {
               }
               if (!exist) RoutingTable[current_size++] = entry;
            }
-           print_routing_table();
         }
       } else {
         // not a rip packet
@@ -423,13 +421,14 @@ int main(int argc, char *argv[]) {
           swap(output[14], output[18]);
           swap(output[15], output[19]);
           output[8] = 64; // ttl = 64
+          output[9] = 1; // tos: icmp
           // icmp type
           output[20] = 0x00; // icmp type: 0 for echo reply message
           // ip & icmp checksum
           // only calculate icmp packet checksum
           uint32_t total_length = (packet[2] << 8) + packet[3];
           cal_ip_icmp_checksum(total_length);
-          HAL_SendIPPacket(if_index, output, res, src_mac);
+          HAL_SendIPPacket(if_index, output, total_length, src_mac);
         }
       }
     } else {
@@ -444,21 +443,32 @@ int main(int argc, char *argv[]) {
         output[0] = 0x45;
         // ttl = 64
         output[8] = 64;
+        output[9] = 1; // tos: icmp
+        // src addr
+        output[12] = packet[16];
+        output[13] = packet[17];
+        output[14] = packet[18];
+        output[15] = packet[19];
+        // dst addr
+        output[16] = packet[12];
+        output[17] = packet[13];
+        output[18] = packet[14];
+        output[19] = packet[15];
         // fill icmp header
         // icmp type = Time Exceeded
         // icmp code = 0
         // fill unused fields with zero
         // append "ip header and first 8 bytes of the original payload"
-        output[20] = 11;
-        output[21] = 0;
-        output[24] = output[25] = output[26] = output[27] = 0;
-        memcpy(output+28, packet, 28);
+        output[20] = 11; // type: time exceeded
+        output[21] = 0;  // code: TTLE
+        output[24] = output[25] = output[26] = output[27] = 0; // unused
+        memcpy(output+28, packet, 28); // copy 28 bytes
         uint32_t total_length = 20 + 8 + 28;
         output[2] = (total_length & 0xff00) >> 8;
         output[3] = total_length & 0xff;
         // calculate icmp checksum and ip checksum
         cal_ip_icmp_checksum(total_length);
-        HAL_SendIPPacket(if_index, output, res, src_mac);
+        HAL_SendIPPacket(if_index, output, total_length, src_mac);
       } else {
           printf("ttl > 1, forward\n");
         // forward
@@ -474,9 +484,6 @@ int main(int argc, char *argv[]) {
             nexthop = dst_addr;
           }
           nexthop = htonl(nexthop);
-        //   if ((nexthop & 0xff000000) >> 24 == 0xc0) {
-        //     nexthop = htonl(nexthop);
-        //   }
           printf("nexthop: %d.%d.%d.%d, dest_if: %d\n", (nexthop & 0xff000000) >> 24, (nexthop & 0xff0000) >> 16, (nexthop & 0xff00) >> 8, nexthop & 0xff, dest_if);
           if (HAL_ArpGetMacAddress(dest_if, nexthop, dest_mac) == 0) {
             // found
@@ -501,6 +508,17 @@ int main(int argc, char *argv[]) {
           output[0] = 0x45;
           // ttl = 64
           output[8] = 64;
+          output[9] = 1; // tos: icmp
+          // src addr
+          output[12] = packet[16];
+          output[13] = packet[17];
+          output[14] = packet[18];
+          output[15] = packet[19];
+          // dst addr
+          output[16] = packet[12];
+          output[17] = packet[13];
+          output[18] = packet[14];
+          output[19] = packet[15];
           // fill icmp header
           // icmp type = Destination Unreachable(3)
           // icmp code = Destination Network Unreachable(0)
@@ -515,7 +533,7 @@ int main(int argc, char *argv[]) {
           output[3] = total_length & 0xff;
           // calculate icmp checksum and ip checksum
           cal_ip_icmp_checksum(total_length);
-          HAL_SendIPPacket(if_index, output, res, src_mac);
+          HAL_SendIPPacket(if_index, output, total_length, src_mac);
         }
       }
     }
