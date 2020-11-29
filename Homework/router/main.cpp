@@ -269,6 +269,10 @@ int main(int argc, char *argv[]) {
     //     // and dst_mac is RIP multicast MAC 01:00:5e:00:00:09
     //     send_message(i, false, RIP_MULTICAST_ADDR, multicast_mac);
     //   }
+    // do the mostly same thing as step 3a.3
+    // except that dst_ip is RIP multicast IP 224.0.0.9
+    // and dst_mac is RIP multicast MAC 01:00:5e:00:00:09
+    // construct rip response
       broadcast_table();
       //print_routing_table();
       last_time = time;
