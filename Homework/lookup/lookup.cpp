@@ -56,6 +56,7 @@ void dfs(RouteEntryNode* cur_node) {
 }
 
 void update_routing_table () {
+    printf("!!!update cached routing table...\n");
     dfs_index = 0;
     dfs(root);
     assert (dfs_index == current_size);
@@ -89,17 +90,21 @@ void _insert(RoutingTableEntry entry) {
         current_size ++;
         cur_node->valid = true;
         cur_node->entry = entry;
+        changed = true;
     } else {
         if (cur_node->entry.nexthop == entry.nexthop) {
-            cur_node->entry.if_index = entry.if_index;
-            cur_node->entry.metric = entry.metric;
+            if (cur_node->entry.if_index != entry.if_index || cur_node->entry.metric != entry.metric) {
+                cur_node->entry.if_index = entry.if_index;
+                cur_node->entry.metric = entry.metric;
+                changed = true;
+            }
         } else if (cur_node->entry.metric > entry.metric) {
             cur_node->entry.nexthop = entry.nexthop;
             cur_node->entry.if_index = entry.if_index;
             cur_node->entry.metric = entry.metric;
+            changed = true;
         }
     }
-    changed = true;
 }
 
 void _delete(RoutingTableEntry entry) {
