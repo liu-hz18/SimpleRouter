@@ -159,7 +159,6 @@ void send_rip_request(int if_index, uint32_t dst_addr_le, macaddr_t mac_addr) {
 void send_rip_response(int if_index, uint32_t dst_addr_le, macaddr_t mac_addr) {
     if (changed) {
         update_routing_table();
-        changed = false;
     }
     printf("send message, if_index=%d, dst_addr=%d.%d.%d.%d \n", if_index, dst_addr_le & 0xff, (dst_addr_le & 0xff00) >> 8, (dst_addr_le & 0xff0000) >> 16, (dst_addr_le & 0xff000000) >> 24);
     int num_packets = 0;

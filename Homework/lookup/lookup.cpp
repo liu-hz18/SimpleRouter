@@ -59,6 +59,7 @@ void update_routing_table () {
     printf("!!!update cached routing table...\n");
     dfs_index = 0;
     dfs(root);
+    changed = false;
     assert (dfs_index == current_size);
 }
 
@@ -166,6 +167,24 @@ void update(bool insert, RoutingTableEntry entry) {
   insert ? _insert(entry) : _delete(entry);
 }
 
+bool prefix_query_cached(uint32_t addr, uint32_t *nexthop, uint32_t* if_index) {
+    int index = -1;
+    int max_len = 0;
+    for(size_t i = 0; i < current_size; i++) {
+        uint32_t mask = ((uint64_t)1<<RoutingTable[i].len) - 1;
+        if ((addr & mask) == RoutingTable[i].addr && RoutingTable[i].len > max_len) {
+            max_len = RoutingTable[i].len;
+            index = i;
+        }
+    }
+    if (index < 0) {
+        return false;
+    }
+    *nexthop = RoutingTable[index].nexthop;
+    *if_index = RoutingTable[index].if_index;
+    return true;
+}
+
 /**
  * @brief 进行一次路由表的查询，按照最长前缀匹配原则
  * @param addr 需要查询的目标地址，大端序
@@ -177,6 +196,9 @@ bool prefix_query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index) {
     // TODO:
     *nexthop = 0;
     *if_index = 0;
+    if (!changed && current_size < 128) {
+        return prefix_query_cached(addr, nexthop, if_index);
+    }
     RouteEntryNode* cur_node = root;
     uint32_t flag_mask = 0x80000000;
     std::stack<RouteEntryNode*> node_trace_stack;
