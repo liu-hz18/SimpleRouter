@@ -167,6 +167,22 @@ void send_rip_response(int if_index, uint32_t dst_addr_le, macaddr_t mac_addr) {
     }
 }
 
+void init_icmp_header() {
+    output[8] = 64; // ttl = 64
+    output[9] = 1; // tos: icmp
+    // swap src and dst addr
+    // src addr
+    output[12] = packet[16];
+    output[13] = packet[17];
+    output[14] = packet[18];
+    output[15] = packet[19];
+    // dst addr
+    output[16] = packet[12];
+    output[17] = packet[13];
+    output[18] = packet[14];
+    output[19] = packet[15];
+}
+
 void swap(uint8_t& a, uint8_t& b) {
     uint8_t temp = a;
     a = b;
@@ -379,9 +395,6 @@ int main(int argc, char *argv[]) {
                   .nexthop = htonl(src_addr),
                   .metric = ((uint32_t)entry_metric) << 24 // big endian
               };
-            //   if (rip.entries[i].nexthop == 0) {
-            //       entry.metric = 0x10000000;
-            //   }
               // update Routing Table
               bool exist = false;
               // linear finding, O(n)!!!
@@ -430,13 +443,7 @@ int main(int argc, char *argv[]) {
           // 4. re-calculate icmp checksum and ip checksum
           printf("echo reply...");
           memcpy(output, packet, res);
-          // swap src and dst addr
-          swap(output[12], output[16]);
-          swap(output[13], output[17]);
-          swap(output[14], output[18]);
-          swap(output[15], output[19]);
-          output[8] = 64; // ttl = 64
-          output[9] = 1; // tos: icmp
+          init_icmp_header();
           // icmp type
           output[20] = 0x00; // icmp type: 0 for echo reply message
           // ip & icmp checksum
@@ -455,20 +462,7 @@ int main(int argc, char *argv[]) {
         printf("ttl < 1 ! time to live exceeded!!\n");
         // TODO: send icmp time to live exceeded to src addr
         // fill IP header
-        output[0] = 0x45;
-        // ttl = 64
-        output[8] = 64;
-        output[9] = 1; // tos: icmp
-        // src addr
-        output[12] = packet[16];
-        output[13] = packet[17];
-        output[14] = packet[18];
-        output[15] = packet[19];
-        // dst addr
-        output[16] = packet[12];
-        output[17] = packet[13];
-        output[18] = packet[14];
-        output[19] = packet[15];
+        init_icmp_header();
         // fill icmp header
         // icmp type = Time Exceeded
         // icmp code = 0
@@ -520,20 +514,7 @@ int main(int argc, char *argv[]) {
                  dst_addr & 0xff, (dst_addr & 0xff00) >> 8, (dst_addr & 0xff0000) >> 16, (dst_addr & 0xff000000) >> 24);
           // send icmp destination net unreachable to src addr
           // fill IP header
-          output[0] = 0x45;
-          // ttl = 64
-          output[8] = 64;
-          output[9] = 1; // tos: icmp
-          // src addr
-          output[12] = packet[16];
-          output[13] = packet[17];
-          output[14] = packet[18];
-          output[15] = packet[19];
-          // dst addr
-          output[16] = packet[12];
-          output[17] = packet[13];
-          output[18] = packet[14];
-          output[19] = packet[15];
+          init_icmp_header();
           // fill icmp header
           // icmp type = Destination Unreachable(3)
           // icmp code = Destination Network Unreachable(0)
