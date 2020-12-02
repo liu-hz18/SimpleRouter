@@ -2,13 +2,16 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stack>
+#include <assert.h>
 #include <arpa/inet.h>
 
 #define MAX_TABLE_SIZE 3000
 
 RoutingTableEntry RoutingTable[MAX_TABLE_SIZE];
 size_t current_size = 0;
-
+size_t dfs_index = 0;
+bool changed = false;
 /*
   RoutingTable Entry 的定义如下：
   typedef struct {
@@ -16,6 +19,7 @@ size_t current_size = 0;
     uint32_t len; // 小端序，前缀长度
     uint32_t if_index; // 小端序，出端口编号
     uint32_t nexthop; // 大端序，下一跳的 IPv4 地址
+    uint32_t metric;   // 大端序
   } RoutingTableEntry;
 
   约定 addr 和 nexthop 以 **大端序** 存储。
@@ -25,38 +29,119 @@ size_t current_size = 0;
   你可以在全局变量中把路由表以一定的数据结构格式保存下来。
 */
 
+struct RouteEntryNode {
+    RouteEntryNode* father;
+    RouteEntryNode* left_child;
+    RouteEntryNode* right_child;
+    bool valid; // is routing entry
+    RoutingTableEntry entry;
+    RouteEntryNode() {
+        father = left_child = right_child = nullptr;
+        valid = false;
+    }
+};
+
+RouteEntryNode* root = new RouteEntryNode();
+
+void dfs(RouteEntryNode* cur_node) {
+    if (cur_node->valid) {
+        RoutingTable[dfs_index++] = cur_node->entry; 
+    }
+    if (cur_node->left_child != nullptr) {
+        dfs(cur_node->left_child);
+    } 
+    if (cur_node->right_child != nullptr) {
+        dfs(cur_node->right_child);
+    }
+}
+
+void update_routing_table () {
+    dfs_index = 0;
+    dfs(root);
+    assert (dfs_index == current_size);
+}
+
 void _insert(RoutingTableEntry entry) {
-    //printf("insert one, addr=%s, nexthop=%s, len=%d, if_index=%d, addr=%u\n", inet_ntoa(in_addr{entry.addr}), inet_ntoa(in_addr{entry.nexthop}), entry.len, entry.if_index, entry.addr);
-    bool exist = false;
-    uint32_t addr = entry.addr;
-    uint32_t len = entry.len;
-    uint32_t if_index = entry.if_index;
-    uint32_t nexthop = entry.nexthop;
     entry.addr = entry.addr & 0xFFFFFFFF;
-    for(size_t i = 0; i < current_size; i++) {
-        if (addr == RoutingTable[i].addr && len == RoutingTable[i].len) {
-            RoutingTable[i].nexthop = nexthop;
-            RoutingTable[i].if_index = if_index;
-            exist = true;
-            break;
+    RouteEntryNode* cur_node = root;
+    uint32_t flag_mask = 0x80000000;
+    uint32_t len = entry.len;
+    uint32_t addr = ntohl(entry.addr);
+    for (int i = 0; i < len; i++) {
+        bool direction = flag_mask & addr;
+        flag_mask >>= 1;
+        if (direction) { // 1 is right
+            if (cur_node->right_child == nullptr) {
+                cur_node->right_child = new RouteEntryNode();
+                cur_node->right_child->father = cur_node;
+            }
+            cur_node = cur_node->right_child;
+        } else { // 0 is left
+            if (cur_node->left_child == nullptr) {
+                cur_node->left_child = new RouteEntryNode();
+                cur_node->left_child->father = cur_node;
+            }
+            cur_node = cur_node->left_child;
         }
     }
-    if (!exist) RoutingTable[current_size++] = entry;
-    //print_routing_table();
+    // init valid node
+    if (!cur_node->valid) {
+        current_size ++;
+        cur_node->valid = true;
+        cur_node->entry = entry;
+    } else {
+        if (cur_node->entry.nexthop == entry.nexthop) {
+            cur_node->entry.if_index = entry.if_index;
+            cur_node->entry.metric = entry.metric;
+        } else if (cur_node->entry.metric > entry.metric) {
+            cur_node->entry.nexthop = entry.nexthop;
+            cur_node->entry.if_index = entry.if_index;
+            cur_node->entry.metric = entry.metric;
+        }
+    }
+    changed = true;
 }
 
 void _delete(RoutingTableEntry entry) {
-    uint32_t addr = entry.addr;
+    RouteEntryNode* cur_node = root;
+    uint32_t flag_mask = 0x80000000;
     uint32_t len = entry.len;
-    //printf("delete one, addr=%s, nexthop=%s\n", inet_ntoa(in_addr{entry.addr}), inet_ntoa(in_addr{entry.nexthop}));
-    for(size_t i = 0; i < current_size; i++) {
-        if (addr == RoutingTable[i].addr && len == RoutingTable[i].len) {
-            current_size--;
-            RoutingTable[i] = RoutingTable[current_size];
-            break;
+    uint32_t addr = ntohl(entry.addr);
+    for (int i = 0; i < len; i++) {
+        bool direction = flag_mask & addr;
+        flag_mask >>= 1;
+        if (direction) {
+            if (cur_node->right_child == nullptr) return;
+            else cur_node = cur_node->right_child;
+        } else {
+            if (cur_node->left_child == nullptr) return;
+            else cur_node = cur_node->left_child;
         }
     }
-    //print_routing_table();
+    // find the entry, delete and trace back
+    RouteEntryNode* father = cur_node->father;
+    current_size --;
+    int height = len-1;
+    while(father != nullptr) {
+        if (cur_node->left_child != nullptr || cur_node->right_child != nullptr) {
+            cur_node->valid = false; // lazy-remove
+            break;
+        }
+        if (cur_node->valid && height != len-1) break;
+        if (cur_node == cur_node->father->left_child) {
+            cur_node = cur_node->father;
+            father = cur_node->father;
+            delete cur_node->left_child;
+            cur_node->left_child = nullptr;
+        } else {
+            cur_node = cur_node->father;
+            father = cur_node->father;
+            delete cur_node->right_child;
+            cur_node->right_child = nullptr;
+        }
+        height --;
+    }
+    changed = true;
 }
 
 void print_ip_big_endian(uint32_t ip_addr) {
@@ -84,30 +169,54 @@ void update(bool insert, RoutingTableEntry entry) {
  * @return 查到则返回 true ，没查到则返回 false
  */
 bool prefix_query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index) {
-  // TODO:
-  //printf("prefix query");
-  //print_ip_big_endian(addr);
-  *nexthop = 0;
-  *if_index = 0;
-  int index = -1;
-  int max_len = 0;
-  //print_routing_table();
-  for(size_t i = 0; i < current_size; i++) {
-      uint32_t mask = ((uint64_t)1<<RoutingTable[i].len) - 1;
-      //printf("addr= %s | entry: mask=%d, addr=%s, len=%d, if_index=%d | addr&mask=%s\n", inet_ntoa(in_addr{htonl(addr)}), mask, inet_ntoa(in_addr{htonl(RoutingTable[i].addr)}), RoutingTable[i].len, RoutingTable[i].if_index, inet_ntoa(in_addr{htonl(addr & mask)}));
-      //printf("%u, %u, %s, %s\n", addr&mask, RoutingTable[i].addr, inet_ntoa(in_addr{htonl(addr&mask)}), inet_ntoa(in_addr{htonl(RoutingTable[i].addr)}));
-      //print_ip_big_endian(RoutingTable[i].addr);
-      if ((addr & mask) == RoutingTable[i].addr && RoutingTable[i].len > max_len) {
-          //printf("Found one\n");
-          max_len = RoutingTable[i].len;
-          index = i;
-      }
-  }
-  if (index < 0) {
-      //printf("!!!Not Found in Routing Table!!!");
-      return false;
-  }
-  *nexthop = RoutingTable[index].nexthop;
-  *if_index = RoutingTable[index].if_index;
-  return true;
+    // TODO:
+    *nexthop = 0;
+    *if_index = 0;
+    RouteEntryNode* cur_node = root;
+    uint32_t flag_mask = 0x80000000;
+    std::stack<RouteEntryNode*> node_trace_stack;
+    addr = ntohl(addr);
+    for (int i = 0; i < 32; i ++) {
+        bool direction = flag_mask & addr;
+        flag_mask >>= 1;
+        if (direction) {
+            if (cur_node->right_child == nullptr) {
+                if (cur_node -> valid) {
+                    *nexthop = cur_node->entry.nexthop;
+                    *if_index = cur_node->entry.if_index;
+                    return true;
+                }
+                if (!node_trace_stack.empty()){
+                    *nexthop = node_trace_stack.top()->entry.nexthop;
+                    *if_index = node_trace_stack.top()->entry.if_index;
+                    return true;
+                }
+                return false;
+            } else {
+                cur_node = cur_node->right_child;
+                if (cur_node->valid) node_trace_stack.push(cur_node);
+            }
+        } else {
+            if (cur_node->left_child == nullptr) {
+                if (cur_node -> valid) {
+                    *nexthop = cur_node->entry.nexthop;
+                    *if_index = cur_node->entry.if_index;
+                    return true;
+                }
+                if (!node_trace_stack.empty()){
+                    *nexthop = node_trace_stack.top()->entry.nexthop;
+                    *if_index = node_trace_stack.top()->entry.if_index;
+                    return true;
+                }
+                return false;
+            } else {
+                cur_node = cur_node->left_child;
+                if (cur_node->valid) node_trace_stack.push(cur_node);
+            }
+        }
+    }
+    // visit leaf node
+    *nexthop = cur_node->entry.nexthop;
+    *if_index = cur_node->entry.if_index;
+    return true;
 }

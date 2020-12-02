@@ -10,6 +10,7 @@
 extern bool validateIPChecksum(uint8_t *packet, size_t len);
 extern void update(bool insert, RoutingTableEntry entry);
 extern bool prefix_query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index);
+extern void update_routing_table();
 extern bool forward(uint8_t *packet, size_t len);
 extern bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output);
 extern uint32_t assemble(const RipPacket *rip, uint8_t *buffer);
@@ -21,6 +22,7 @@ const uint32_t RIP_MULTICAST_ADDR = 0x090000e0;
 // Routing table: linear data structure
 extern RoutingTableEntry RoutingTable[];
 extern size_t current_size;
+extern bool changed;
 
 // for online experiment, don't change
 #ifdef ROUTER_R1
@@ -155,6 +157,10 @@ void send_rip_request(int if_index, uint32_t dst_addr_le, macaddr_t mac_addr) {
 }
 
 void send_rip_response(int if_index, uint32_t dst_addr_le, macaddr_t mac_addr) {
+    if (changed) {
+        update_routing_table();
+        changed = false;
+    }
     printf("send message, if_index=%d, dst_addr=%d.%d.%d.%d \n", if_index, dst_addr_le & 0xff, (dst_addr_le & 0xff00) >> 8, (dst_addr_le & 0xff0000) >> 16, (dst_addr_le & 0xff000000) >> 24);
     int num_packets = 0;
     RipPacket** rip_packets = build_rip_response(&num_packets, htonl(dst_addr_le));
@@ -396,33 +402,9 @@ int main(int argc, char *argv[]) {
                   .metric = ((uint32_t)entry_metric) << 24 // big endian
               };
               // update Routing Table
-              bool exist = false;
-              // linear finding, O(n)!!!
-              for(size_t i = 0; i < current_size; i++) {
-                if (entry.addr == RoutingTable[i].addr && entry.len == RoutingTable[i].len) {
-                    if (RoutingTable[i].nexthop == entry.nexthop) { // sender address == prev nexthop in Routing Table
-                        printf("Next Hop is Src Addr, force update\n");
-                        print_routing_table();
-                        RoutingTable[i].nexthop = entry.nexthop;
-                        RoutingTable[i].if_index = entry.if_index;
-                        RoutingTable[i].metric = entry.metric;
-                        broadcast_table();
-                    } else if (entry.metric < RoutingTable[i].metric) {
-                        printf("Next Hop is not Src Addr, and metric is smaller than in-table entry\n");
-                        print_routing_table();
-                        RoutingTable[i].nexthop = entry.nexthop;
-                        RoutingTable[i].if_index = entry.if_index;
-                        RoutingTable[i].metric = entry.metric;
-                        broadcast_table();
-                    }
-                    exist = true;
-                    break;
-                }
-              }
-              if (!exist) {
-                  RoutingTable[current_size++] = entry;
-                  broadcast_table();
-              }
+              update(true, entry);
+              broadcast_table();
+              print_routing_table();
            }
         }
       } else {
