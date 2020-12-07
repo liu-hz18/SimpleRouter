@@ -6,7 +6,7 @@
 #include <assert.h>
 #include <arpa/inet.h>
 
-#define MAX_TABLE_SIZE 3000
+#define MAX_TABLE_SIZE 10000
 
 RoutingTableEntry RoutingTable[MAX_TABLE_SIZE];
 size_t current_size = 0;

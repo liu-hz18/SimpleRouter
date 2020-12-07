@@ -188,12 +188,6 @@ void init_icmp_header() {
     output[19] = packet[15];
 }
 
-void swap(uint8_t& a, uint8_t& b) {
-    uint8_t temp = a;
-    a = b;
-    b = temp;
-}
-
 void cal_ip_icmp_checksum(size_t total_length) {
     // calculate icmp checksum and ip checksum
     output[10] = output[11] = 0x00;
@@ -384,15 +378,15 @@ int main(int argc, char *argv[]) {
           // optional: triggered updates ref. RFC2453 3.10.1
           printf("Update Routing Table... num_entries: %d\n", rip.numEntries);
           for (size_t i = 0; i < rip.numEntries; i++) {
-              uint32_t len = 32;
-              uint32_t ite = ntohl(rip.entries[i].mask);
-              while(!(ite & 1) && len > 0) { // calculate length
-                  len --;
-                  ite >>= 1;
-              }
               uint8_t entry_metric = (rip.entries[i].metric & 0xff000000) >> 24;
               if (entry_metric >= 15) continue; //对metric为16的包直接丢弃
               entry_metric ++;
+              uint32_t len = 32;
+              uint32_t mask = ntohl(rip.entries[i].mask);
+              while(!(mask & 1) && len > 0) { // calculate length
+                  len --;
+                  mask >>= 1;
+              }
               RoutingTableEntry entry = {
                   .addr = rip.entries[i].addr,
                   .len = len,
@@ -402,9 +396,9 @@ int main(int argc, char *argv[]) {
               };
               // update Routing Table
               update(true, entry);
-              broadcast_table();
-              print_routing_table();
            }
+           broadcast_table();
+           print_routing_table();
         }
       } else {
         // not a rip packet
