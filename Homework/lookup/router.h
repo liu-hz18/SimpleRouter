@@ -8,5 +8,5 @@ typedef struct {
   uint32_t nexthop;  // 大端序，下一跳的 IPv4 地址
   // 为了实现 RIP 协议，需要在这里添加额外的字段
   uint32_t metric;   // 大端序
-  uint32_t mask;     // 小端序，mask
+  uint32_t mask;     // big端序，mask
 } RoutingTableEntry;

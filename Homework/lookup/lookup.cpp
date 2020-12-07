@@ -171,7 +171,6 @@ bool prefix_query_cached(uint32_t addr, uint32_t *nexthop, uint32_t* if_index) {
     int index = -1;
     int max_len = 0;
     for(size_t i = 0; i < current_size; i++) {
-        //uint32_t mask = ((uint64_t)1<<RoutingTable[i].len) - 1;
         uint32_t mask = RoutingTable[i].mask;
         if ((addr & mask) == RoutingTable[i].addr && mask > max_len) {
             max_len = mask;

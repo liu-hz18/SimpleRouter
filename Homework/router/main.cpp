@@ -89,12 +89,12 @@ RipPacket** build_rip_response(int* num_packets, uint32_t dst_addr_be) {
         //printf("before construct entry %d\n", i);
         RipEntry entry = {
             .addr = RoutingTable[i].addr,
-            .mask = htonl(RoutingTable[i].mask),
+            .mask = RoutingTable[i].mask,
             .nexthop = RoutingTable[i].nexthop,
             .metric = (dst_addr_be == RoutingTable[i].nexthop) ? 0x10000000 : RoutingTable[i].metric // posion reverse
         };
-        //uint32_t mask = ~((((uint64_t)1) << (32 - RoutingTable[i].len)) - 1);
-        //entry.mask = htonl(mask);
+        // uint32_t mask = ~((((uint64_t)1) << (32 - RoutingTable[i].len)) - 1);
+        // entry.mask = htonl(mask);
         rip_packets[*num_packets-1]->entries[i % 25] = entry;   
     }
     return rip_packets;
@@ -262,7 +262,7 @@ int main(int argc, char *argv[]) {
         .if_index = i,                 // little endian
         .nexthop = 0,                  // big endian, means direct
         .metric = 0x01000000,           // big endian, set direct routes to 1
-        .mask = 0xffffff00
+        .mask = 0x00ffffff
     };
     update(true, entry);
   }
@@ -281,6 +281,7 @@ int main(int argc, char *argv[]) {
     if (time > last_time + 5 * 1000) {
       // ref. RFC2453 Section 3.8
       //if (changed) print_routing_table();
+      //print_routing_table();
       printf("5s Timer\n");
       // HINT: print complete routing table to stdout/stderr for debugging
       // TODO: send complete routing table to every interface
@@ -393,7 +394,7 @@ int main(int argc, char *argv[]) {
                   .if_index = if_index,
                   .nexthop = htonl(src_addr),
                   .metric = ((uint32_t)entry_metric) << 24, // big endian
-                  .mask = mask
+                  .mask = rip.entries[i].mask
               };
               while(!(mask & 1) && len > 0) { // calculate length
                   len --;
