@@ -323,9 +323,9 @@ int main(int argc, char *argv[]) {
     // TODO: extract src_addr and dst_addr from packet (big endian)
     src_addr = (packet[15] << 24) + (packet[14] << 16) + (packet[13] << 8) + packet[12]; // big
     dst_addr = (packet[19] << 24) + (packet[18] << 16) + (packet[17] << 8) + packet[16]; // big
-    printf("packet addr info from %d: ", if_index);
-    printf("src addr = %d.%d.%d.%d ", src_addr & 0xff, (src_addr & 0xff00) >> 8, (src_addr & 0xff0000) >> 16, (src_addr & 0xff000000) >> 24);
-    printf("dst addr = %d.%d.%d.%d \n", dst_addr & 0xff, (dst_addr & 0xff00) >> 8, (dst_addr & 0xff0000) >> 16, (dst_addr & 0xff000000) >> 24);
+    //printf("packet addr info from %d: ", if_index);
+    //printf("src addr = %d.%d.%d.%d ", src_addr & 0xff, (src_addr & 0xff00) >> 8, (src_addr & 0xff0000) >> 16, (src_addr & 0xff000000) >> 24);
+    //printf("dst addr = %d.%d.%d.%d \n", dst_addr & 0xff, (dst_addr & 0xff00) >> 8, (dst_addr & 0xff0000) >> 16, (dst_addr & 0xff000000) >> 24);
     // 2. check whether dst is me
     bool dst_is_me = false;
     for (int i = 0; i < N_IFACE_ON_BOARD; i++) {
@@ -479,7 +479,16 @@ int main(int argc, char *argv[]) {
             // found
             memcpy(output, packet, res);
             // update ttl and checksum
-            forward(output, res);
+            // forward(output, res);
+            uint16_t m = ((uint16_t)output[8] << 8) + output[9];
+            output[8] -= 1;
+            uint16_t m_new = ((uint16_t)output[8] << 8) + output[9];
+            uint16_t hc = ((uint16_t)output[10] << 8) + output[11];
+            //uint16_t hc_new = ~(~hc + ~m + m_new);
+            uint16_t hc_new = hc + m + (~m_new + 1); // one's complement
+            if (hc_new == 0xffff) hc_new ++; // solve corner case
+            output[10] = (hc_new >> 8);
+            output[11] = (hc_new & 0xff);
             //printf("Forwarding ARP Packet");
             HAL_SendIPPacket(dest_if, output, res, dest_mac);
           } else {
