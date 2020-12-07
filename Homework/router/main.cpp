@@ -149,7 +149,7 @@ void init_rip_header(uint32_t src_addr_le, uint32_t dst_addr_le) {
 
 void send_rip_request(int if_index, uint32_t dst_addr_le, macaddr_t mac_addr) {
     int packet_num = 1;
-    printf("send message, if_index=%d, dst_addr=%d.%d.%d.%d \n", if_index, dst_addr_le & 0xff, (dst_addr_le & 0xff00) >> 8, (dst_addr_le & 0xff0000) >> 16, (dst_addr_le & 0xff000000) >> 24);
+    //printf("send message, if_index=%d, dst_addr=%d.%d.%d.%d \n", if_index, dst_addr_le & 0xff, (dst_addr_le & 0xff00) >> 8, (dst_addr_le & 0xff0000) >> 16, (dst_addr_le & 0xff000000) >> 24);
     RipPacket* rip_packets = build_rip_request();
     init_rip_header(addrs[if_index], dst_addr_le);
     int rip_len = assemble(rip_packets, output+28);
@@ -161,12 +161,12 @@ void send_rip_response(int if_index, uint32_t dst_addr_le, macaddr_t mac_addr) {
     if (changed) {
         update_routing_table();
     }
-    printf("send message, if_index=%d, dst_addr=%d.%d.%d.%d \n", if_index, dst_addr_le & 0xff, (dst_addr_le & 0xff00) >> 8, (dst_addr_le & 0xff0000) >> 16, (dst_addr_le & 0xff000000) >> 24);
+    //printf("send message, if_index=%d, dst_addr=%d.%d.%d.%d \n", if_index, dst_addr_le & 0xff, (dst_addr_le & 0xff00) >> 8, (dst_addr_le & 0xff0000) >> 16, (dst_addr_le & 0xff000000) >> 24);
     int num_packets = 0;
     RipPacket** rip_packets = build_rip_response(&num_packets, htonl(dst_addr_le));
     init_rip_header(addrs[if_index], dst_addr_le);
     for (size_t i = 0; i < num_packets; i++) {
-        printf("packet num: %d\n", i);
+        //printf("packet num: %d\n", i);
         int rip_len = assemble(rip_packets[i], output+28); //UDP包中套RIP包
         int ip_len = init_rip_header_len(rip_len);
         HAL_SendIPPacket(if_index, output, ip_len, mac_addr);
@@ -279,7 +279,7 @@ int main(int argc, char *argv[]) {
     // but for faster convergence, use 5s here
     if (time > last_time + 5 * 1000) {
       // ref. RFC2453 Section 3.8
-      print_routing_table();
+      if (changed) print_routing_table();
       printf("5s Timer\n");
       // HINT: print complete routing table to stdout/stderr for debugging
       // TODO: send complete routing table to every interface
@@ -340,9 +340,9 @@ int main(int argc, char *argv[]) {
       RipPacket rip;
       // check and validate
       if (disassemble(packet, res, &rip)) {
-        printf("rip command: %d\n", rip.command);
+        //printf("rip command: %d\n", rip.command);
         if (rip.command == 1) {
-          printf("3a.3 request\n");
+          //printf("3a.3 request\n");
           // 3a.3 request, ref. RFC2453 Section 3.9.1
           // only need to respond to whole table requests in the lab
           // RipPacket resp;
@@ -398,8 +398,10 @@ int main(int argc, char *argv[]) {
               // update Routing Table
               _insert(entry);
            }
-           if(changed) broadcast_table();
-           print_routing_table();
+           if(changed) {
+               broadcast_table();
+               print_routing_table();
+           }
         }
       } else {
         // not a rip packet
@@ -465,18 +467,18 @@ int main(int argc, char *argv[]) {
           macaddr_t dest_mac;
           // direct routing
           if (nexthop == 0) {
-            printf("nexthop is zero !!!\n");
+            //printf("nexthop is zero !!!\n");
             nexthop = dst_addr;
           } else {
             nexthop = htonl(nexthop);
           }
-          printf("nexthop: %d.%d.%d.%d, dest_if: %d\n", (nexthop & 0xff000000) >> 24, (nexthop & 0xff0000) >> 16, (nexthop & 0xff00) >> 8, nexthop & 0xff, dest_if);
+          //printf("nexthop: %d.%d.%d.%d, dest_if: %d\n", (nexthop & 0xff000000) >> 24, (nexthop & 0xff0000) >> 16, (nexthop & 0xff00) >> 8, nexthop & 0xff, dest_if);
           if (HAL_ArpGetMacAddress(dest_if, nexthop, dest_mac) == 0) { // little endian
             // found
             memcpy(output, packet, res);
             // update ttl and checksum
             forward(output, res);
-            printf("Forwarding ARP Packet");
+            //printf("Forwarding ARP Packet");
             HAL_SendIPPacket(dest_if, output, res, dest_mac);
           } else {
             // not found
