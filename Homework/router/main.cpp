@@ -9,6 +9,7 @@
 
 extern bool validateIPChecksum(uint8_t *packet, size_t len);
 extern void update(bool insert, RoutingTableEntry entry);
+extern void _insert(RoutingTableEntry entry);
 extern bool prefix_query(uint32_t addr, uint32_t *nexthop, uint32_t *if_index);
 extern void update_routing_table();
 extern bool forward(uint8_t *packet, size_t len);
@@ -395,9 +396,9 @@ int main(int argc, char *argv[]) {
                   .metric = ((uint32_t)entry_metric) << 24 // big endian
               };
               // update Routing Table
-              update(true, entry);
+              _insert(entry);
            }
-           broadcast_table();
+           if(changed) broadcast_table();
            print_routing_table();
         }
       } else {
@@ -466,10 +467,11 @@ int main(int argc, char *argv[]) {
           if (nexthop == 0) {
             printf("nexthop is zero !!!\n");
             nexthop = dst_addr;
+          } else {
+            nexthop = htonl(nexthop);
           }
-          nexthop = htonl(nexthop);
           printf("nexthop: %d.%d.%d.%d, dest_if: %d\n", (nexthop & 0xff000000) >> 24, (nexthop & 0xff0000) >> 16, (nexthop & 0xff00) >> 8, nexthop & 0xff, dest_if);
-          if (HAL_ArpGetMacAddress(dest_if, nexthop, dest_mac) == 0) {
+          if (HAL_ArpGetMacAddress(dest_if, nexthop, dest_mac) == 0) { // little endian
             // found
             memcpy(output, packet, res);
             // update ttl and checksum

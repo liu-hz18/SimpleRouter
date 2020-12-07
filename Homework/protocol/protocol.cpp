@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <arpa/inet.h>
 
-bool is_mask(uint64_t mask) {
+inline bool is_mask(uint64_t mask) {
     for(size_t i = 0; i < 32; i++) {
         if ( mask == (((uint64_t)1) << i) - 1 ) { 
             return true;
@@ -14,7 +14,7 @@ bool is_mask(uint64_t mask) {
     return false;
 }
 
-uint64_t to_int64_net(const uint8_t *buffer, size_t bytes) { // BIG ENDIAN
+inline uint64_t to_int64_net(const uint8_t *buffer, size_t bytes) { // BIG ENDIAN
     uint64_t number = 0;
     for(size_t i = 0; i < bytes; i++) {
         number = (number << 8) + buffer[i];
@@ -22,11 +22,11 @@ uint64_t to_int64_net(const uint8_t *buffer, size_t bytes) { // BIG ENDIAN
     return number;
 }
 
-uint64_t to_int64_host(const uint8_t* buffer, size_t bytes) { // SMALL ENDIAN
+inline uint64_t to_int64_host(const uint8_t* buffer, size_t bytes) { // SMALL ENDIAN
     return ntohl(to_int64_net(buffer, bytes));
 }
 
-bool command_match(uint32_t rip_command, uint64_t packet_command) {
+inline bool command_match(uint32_t rip_command, uint64_t packet_command) {
     if ((rip_command == 2 && packet_command == 2) || (rip_command == 1 && packet_command == 0)){
         return true;
     }
@@ -34,7 +34,7 @@ bool command_match(uint32_t rip_command, uint64_t packet_command) {
     return false;
 }
 
-bool valid_metric(uint64_t metric) {
+inline bool valid_metric(uint64_t metric) {
     return metric >= 1 && metric <= 16;
 }
 
