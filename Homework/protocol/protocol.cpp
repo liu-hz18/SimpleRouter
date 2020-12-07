@@ -47,9 +47,9 @@ bool valid_entry(uint32_t command, const uint8_t* packet) {
           (!is_mask(to_int64_net(packet+8, 4))) ||  //mask
           (!valid_metric(to_int64_net(packet+16, 4)))      //metric
     ){
-        //printf("!!!invalid entry!!!, command: %d, %d | tag: %d, %d | mask: %d, %d, %d, %d | metric: %d, %d, %d, %d\n",
-        //       packet[0], packet[1], packet[2], packet[3], packet[8], packet[9], packet[10], packet[11],
-        //       packet[16], packet[17], packet[18], packet[19]);
+        // printf("!!!invalid entry!!!, command: %d, %d | tag: %d, %d | mask: %d, %d, %d, %d | metric: %d, %d, %d, %d\n",
+        //        packet[0], packet[1], packet[2], packet[3], packet[8], packet[9], packet[10], packet[11],
+        //        packet[16], packet[17], packet[18], packet[19]);
         return false;
     }
     return true;
@@ -127,10 +127,10 @@ bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
             return false;
         }
         RipEntry entry;  //little endian
-        entry.addr = to_int64_host(packet+index+4, 4);
-        entry.mask = to_int64_host(packet+index+8, 4);
-        entry.nexthop = to_int64_host(packet+index+12, 4);
-        entry.metric = to_int64_host(packet+index+16, 4);
+        entry.addr = *(uint32_t*)(packet+index+4);
+        entry.mask = *(uint32_t*)(packet+index+8);
+        entry.nexthop = *(uint32_t*)(packet+index+12);
+        entry.metric = *(uint32_t*)(packet+index+16);
         output->entries[output->numEntries++] = entry;
         index += 20;
     }
