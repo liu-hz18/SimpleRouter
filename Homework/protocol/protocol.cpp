@@ -4,7 +4,8 @@
 #include <stdio.h>
 #include <arpa/inet.h>
 
-inline bool is_mask(uint64_t mask) {
+inline bool is_mask(uint32_t mask) {
+    mask = ~mask;
     for(size_t i = 0; i < 32; i++) {
         if ( mask == (((uint64_t)1) << i) - 1 ) { 
             return true;
@@ -35,6 +36,7 @@ inline bool command_match(uint32_t rip_command, uint64_t packet_command) {
 }
 
 inline bool valid_metric(uint64_t metric) {
+    //printf("metric: %d", metric);
     return metric >= 1 && metric <= 16;
 }
 
@@ -42,12 +44,12 @@ bool valid_entry(uint32_t command, const uint8_t* packet) {
     if ( (!command_match(command, to_int64_net(packet, 2))) ||  //family
           packet[2] != 0 || //tag
           packet[3] != 0 || //tag
-          (!is_mask(to_int64_host(packet+8, 4))) ||  //mask
+          (!is_mask(to_int64_net(packet+8, 4))) ||  //mask
           (!valid_metric(to_int64_net(packet+16, 4)))      //metric
     ){
-        // printf("!!!invalid entry!!!, command: %d, %d | tag: %d, %d | mask: %d, %d, %d, %d | metric: %d, %d, %d, %d\n",
-        //        packet[0], packet[1], packet[2], packet[3], packet[8], packet[9], packet[10], packet[11],
-        //        packet[16], packet[17], packet[18], packet[19]);
+        //printf("!!!invalid entry!!!, command: %d, %d | tag: %d, %d | mask: %d, %d, %d, %d | metric: %d, %d, %d, %d\n",
+        //       packet[0], packet[1], packet[2], packet[3], packet[8], packet[9], packet[10], packet[11],
+        //       packet[16], packet[17], packet[18], packet[19]);
         return false;
     }
     return true;
@@ -104,8 +106,8 @@ bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
     uint64_t ip_len = to_int64_net(packet+2, 2);
     int index = iphlen; //udp = index + iphlen
     if(ip_len > len) {
-        // printf("total len: %x, %x\n", packet[2], packet[3]);
-        // printf("!!!invalid, ip total len=%u > len=%u\n", ip_len, len);
+        //printf("total len: %x, %x\n", packet[2], packet[3]);
+        //printf("!!!invalid, ip total len=%u > len=%u\n", ip_len, len);
         return false;
     }
     index += 8;
@@ -114,7 +116,7 @@ bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
          packet[index+2] != 0 ||  //zero
          packet[index+3] != 0     //zero
     ) {
-        // printf("!!!invalid, index: %d\n");
+        //printf("!!!invalid, index: %d\n");
         return false;
     }
     output->command = packet[index];

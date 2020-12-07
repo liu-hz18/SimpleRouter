@@ -56,7 +56,7 @@ void dfs(RouteEntryNode* cur_node) {
 }
 
 void update_routing_table () {
-    printf("!!!update cached routing table...\n");
+    //printf("!!!update cached routing table...\n");
     dfs_index = 0;
     dfs(root);
     changed = false;

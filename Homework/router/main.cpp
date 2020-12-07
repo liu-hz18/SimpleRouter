@@ -77,7 +77,7 @@ RipPacket* build_rip_request() {
 }
 
 RipPacket** build_rip_response(int* num_packets, uint32_t dst_addr_be) {
-    RipPacket** rip_packets = new RipPacket*[100];
+    RipPacket** rip_packets = new RipPacket*[400];
     *num_packets = 0;
     for (size_t i = 0; i < current_size; i++) {
         if (i % 25 == 0) {
@@ -102,6 +102,7 @@ RipPacket** build_rip_response(int* num_packets, uint32_t dst_addr_be) {
 
 int init_rip_header_len(int rip_len) { // addr little endian
     int ip_len = rip_len + 28; // total length
+    output[10] = output[11] = 0;
     output[2] = (ip_len & 0xff00) >> 8;
     output[3] = ip_len & 0xff;
     // ip checksum
@@ -127,7 +128,6 @@ void init_rip_header(uint32_t src_addr_le, uint32_t dst_addr_le) {
     output[4] = output[5] = output[6] = output[7] = 0x0; // flags
     output[8] = 0x01; // ttl = 1
     output[9] = 0x11; // protocol: udp = 17
-    output[10] = output[11] = 0x00; // set checksum to zero for future calculation
     // src addr
     output[12] =  src_addr_le & 0xff;
     output[13] = (src_addr_le & 0xff00) >> 8;
@@ -265,7 +265,7 @@ int main(int argc, char *argv[]) {
     };
     update(true, entry);
   }
-  print_routing_table();
+  //print_routing_table();
   uint64_t last_time = 0;
 
   // 程序启动时向所有 interface 发送 RIP Request，目标地址为 RIP 的组播地址。
@@ -273,13 +273,13 @@ int main(int argc, char *argv[]) {
     send_rip_request(1, RIP_MULTICAST_ADDR, multicast_mac);
 
   while (1) {
-    printf("***************************************\n");
+    printf("\n***************************************, size=%d\n", current_size);
     uint64_t time = HAL_GetTicks();
     // the RFC says 30s interval,
     // but for faster convergence, use 5s here
     if (time > last_time + 5 * 1000) {
       // ref. RFC2453 Section 3.8
-      if (changed) print_routing_table();
+      //if (changed) print_routing_table();
       printf("5s Timer\n");
       // HINT: print complete routing table to stdout/stderr for debugging
       // TODO: send complete routing table to every interface
@@ -310,10 +310,12 @@ int main(int argc, char *argv[]) {
       // packet is truncated, ignore it
       continue;
     }
-    printf("receive a packet, res: %d \n", res);
+    //printf("receive a packet, res: %d \n", res);
     // 1. validate
     if (!validateIPChecksum(packet, res)) {
-      printf("!!!receive packet Invalid IP Checksum!!!\n");
+      printf("!!!receive packet Invalid IP Checksum!!! src addr = %d.%d.%d.%d, dst addr = %d.%d.%d.%d\n",
+            packet[12], packet[13], packet[14], packet[15], packet[16], packet[17], packet[18], packet[19]);
+      printf("received checksum: %x, %x\n", packet[10], packet[11]);
       // drop if ip checksum invalid
       continue;
     }
@@ -400,7 +402,7 @@ int main(int argc, char *argv[]) {
            }
            if(changed) {
                broadcast_table();
-               print_routing_table();
+               //print_routing_table();
            }
         }
       } else {
@@ -434,7 +436,7 @@ int main(int argc, char *argv[]) {
     } else {
       // 3b.1 dst is not me
       // check ttl
-      printf("dst is not me...\n");
+      //printf("dst is not me...\n");
       uint8_t ttl = packet[8];
       if (ttl <= 1) {
         printf("ttl < 1 ! time to live exceeded!!\n");
@@ -457,12 +459,12 @@ int main(int argc, char *argv[]) {
         cal_ip_icmp_checksum(total_length);
         HAL_SendIPPacket(if_index, output, total_length, src_mac);
       } else {
-          printf("ttl > 1, forward\n");
+          //printf("ttl > 1, forward\n");
         // forward
         // beware of endianness
         uint32_t nexthop, dest_if;
         if (prefix_query(dst_addr, &nexthop, &dest_if)) {
-          printf("prefix query hit\n");
+          //printf("prefix query hit\n");
           // found
           macaddr_t dest_mac;
           // direct routing
