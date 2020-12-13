@@ -409,10 +409,10 @@ int main(int argc, char *argv[]) {
               // update Routing Table
               _insert(entry);
            }
-        //    if(changed) {
-        //        broadcast_table();
-        //        print_routing_table();
-        //    }
+           if(changed) {
+               broadcast_table();
+               print_routing_table();
+           }
         }
       } else {
         // not a rip packet
