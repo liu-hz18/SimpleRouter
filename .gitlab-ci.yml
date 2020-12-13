@@ -1,13 +1,8 @@
-image: debian:stretch
-default:
-    before_script:
-        - sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list
-        - apt update
-        - apt install -y python3-pip python3-py python3-lxml libpcap-dev libxml2-dev libxslt-dev
-        - pip3 install -i https://pypi.tuna.tsinghua.edu.cn/simple pyshark
-
 homework:
+    image: jiegec/router-lab-x86_64
     script:
+        # DO NOT EDIT!
+        - gpg --verify .gitlab-ci.yml.asc .gitlab-ci.yml
         - mkdir logs
         - make -C Homework/checksum
         - (cd Homework/checksum && python3 grade.py | tee ../../logs/checksum.log)
@@ -24,9 +19,12 @@ homework:
         expire_in: 1 year
 
 router:
+    image: jiegec/router-lab-aarch64
     tags:
         - arm64
     script:
+        # DO NOT EDIT!
+        - gpg --verify .gitlab-ci.yml.asc .gitlab-ci.yml
         - make -C Homework/router/r1
         - make -C Homework/router/r2
         - make -C Homework/router/r3

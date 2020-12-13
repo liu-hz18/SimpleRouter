@@ -6,6 +6,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <netinet/ip.h>
+#include <netinet/ip_icmp.h>
+#include <netinet/udp.h>
 
 extern bool validateIPChecksum(uint8_t *packet, size_t len);
 extern void update(bool insert, RoutingTableEntry entry);
@@ -49,7 +52,7 @@ const in_addr_t addrs[N_IFACE_ON_BOARD] = {0x0204a8c0, 0x0205a8c0, 0x010aa8c0,
                                            0x010ba8c0};
 #else
 
-// 自己调试用，你可以按需进行修改，注意端序
+// 自己调试用，你可以按需进行修改，注意字节序
 // 0: 10.0.0.1
 // 1: 10.0.1.1
 // 2: 10.0.2.1
@@ -352,7 +355,7 @@ int main(int argc, char *argv[]) {
           // RipPacket resp;
           // TODO: fill resp
           // implement split horizon with poisoned reverse
-          // ref. RFC2453 Section 3.4.3
+          // ref. RFC 2453 Section 3.4.3
 
           // TODO: fill IP headers
           // output[0] = 0x45;
@@ -372,7 +375,7 @@ int main(int argc, char *argv[]) {
           // HAL_SendIPPacket(if_index, output, rip_len + 20 + 8, src_mac);
           send_rip_response(if_index, src_addr, src_mac);
         } else {
-          // 3a.2 response, ref. RFC2453 Section 3.9.2
+          // 3a.2 response, ref. RFC 2453 Section 3.9.2
           // TODO: update routing table
           // new metric = ?
           // update metric, if_index, nexthop
@@ -425,6 +428,7 @@ int main(int argc, char *argv[]) {
           // 2. change icmp `type` in header
           // 3. set ttl to 64
           // 4. re-calculate icmp checksum and ip checksum
+          // 5. send icmp packet
           printf("echo reply...");
           memcpy(output, packet, res);
           init_icmp_header();
@@ -448,6 +452,7 @@ int main(int argc, char *argv[]) {
         // fill IP header
         init_icmp_header();
         // fill icmp header
+        // struct icmphdr *icmp_header = (struct icmphdr *)&output[20];
         // icmp type = Time Exceeded
         // icmp code = 0
         // fill unused fields with zero
@@ -462,6 +467,11 @@ int main(int argc, char *argv[]) {
         // calculate icmp checksum and ip checksum
         cal_ip_icmp_checksum(total_length);
         HAL_SendIPPacket(if_index, output, total_length, src_mac);
+        // TODO: icmp code = 0
+        // TODO: fill unused fields with zero
+        // TODO: append "ip header and first 8 bytes of the original payload"
+        // TODO: calculate icmp checksum and ip checksum
+        // TODO: send icmp packet
       } else {
           //printf("ttl > 1, forward\n");
         // forward

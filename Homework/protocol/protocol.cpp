@@ -80,13 +80,13 @@ bool valid_entry(uint32_t command, const uint8_t* packet) {
   } RipPacket;
 
   你需要从 IPv4 包中解析出 RipPacket 结构体，也要从 RipPacket 结构体构造出对应的
-  IP 包 由于 Rip 包结构本身不记录表项的个数，需要从 IP 头的长度中推断，所以在
-  RipPacket 中额外记录了个数。 需要注意这里的地址都是用 **大端序**
-  存储的，1.2.3.4 对应 0x04030201 。
+  IP 包。 由于 RIP 包结构本身不记录表项的个数，需要从 IP 头的长度中推断，所以在
+  RipPacket 中额外记录了个数。 需要注意这里的地址都是用 **网络字节序（大端序）**
+  存储的，1.2.3.4 在小端序的机器上被解释为整数 0x04030201 。
 */
 
 /**
- * @brief 从接受到的 IP 包解析出 Rip 协议的数据
+ * @brief 从接受到的 IP 包解析出 RIP 协议的数据
  * @param packet 接受到的 IP 包
  * @param len 即 packet 的长度
  * @param output 把解析结果写入 *output
@@ -97,7 +97,7 @@ bool valid_entry(uint32_t command, const uint8_t* packet) {
  * 时，把传入的 IP 包视为不合法。 你不需要校验 IP 头和 UDP 的校验和是否合法。
  * 你需要检查 Command 是否为 1 或 2，Version 是否为 2， Zero 是否为 0，
  * Family 和 Command 是否有正确的对应关系（见上面结构体注释），Tag 是否为 0，
- * Metric 转换成小端序后是否在 [1,16] 的区间内，
+ * Metric 是否在 [1,16] 的区间内，
  * Mask 的二进制是不是连续的 1 与连续的 0 组成等等。
  */
 bool disassemble(const uint8_t *packet, uint32_t len, RipPacket *output) {
