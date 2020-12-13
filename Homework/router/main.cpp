@@ -173,7 +173,9 @@ void send_rip_response(int if_index, uint32_t dst_addr_le, macaddr_t mac_addr) {
         int rip_len = assemble(rip_packets[i], output+28); //UDP包中套RIP包
         int ip_len = init_rip_header_len(rip_len);
         HAL_SendIPPacket(if_index, output, ip_len, mac_addr);
+        delete rip_packets[i];
     }
+    delete rip_packets;
 }
 
 void init_icmp_header() {
@@ -407,10 +409,10 @@ int main(int argc, char *argv[]) {
               // update Routing Table
               _insert(entry);
            }
-           if(changed) {
-               broadcast_table();
-               //print_routing_table();
-           }
+        //    if(changed) {
+        //        broadcast_table();
+        //        print_routing_table();
+        //    }
         }
       } else {
         // not a rip packet
