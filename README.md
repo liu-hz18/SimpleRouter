@@ -2,7 +2,9 @@
 
 ![C/C++ CI](https://github.com/z4yx/Router-Lab/workflows/C/C++%20CI/badge.svg)
 
-## Simple Software Router in 'Principles of Network', implemented RIP, ICMP, ARP, and use '0-1 trie' for fast routing table lookup.
+## Simple Software Router in 'Principles of Network'
+* [x] implemented RIP, ICMP, ARP
+* [x] use '0-1 trie' for fast routing table lookup.
 
 ## 版权声明
 
